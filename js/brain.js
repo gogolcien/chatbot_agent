@@ -1,0 +1,735 @@
+let escuchando = false;
+
+let AGENTE_ACTIVO = null;
+
+// ================= CONFIGURACIÓN =================
+AVATAR = {
+    neutral: './assets/saludo.gif',
+    hablar: './assets/explicando.gif',
+    oir: './assets/escuchando.gif',
+    pensar: './assets/pensando.gif',
+    exito: './assets/exito.gif'
+};
+
+const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+recognition.lang = 'es-MX';
+recognition.continuous = false;
+recognition.interimResults = true;
+
+const synth = window.speechSynthesis;
+
+// VARIABLE DINÁMICA (Se llenará con el JSON)
+let DESTINOS_VALIDOS = [];
+DESTINOS_MAP = {};
+
+let estado = 'OFF';
+let datos = {
+    destino: '',
+    fechaEntrada: null,
+    fechaSalida: null,
+    strEntrada: '',
+    habitaciones: 0,
+    habActual: 1,
+    habData: []
+};
+
+let VOCES_LISTAS = false; //!carga de voces
+
+recognition.lang = 'es-MX';
+recognition.continuous = false;
+recognition.interimResults = false;
+recognition.maxAlternatives = 1;
+
+// ================= CARGA DE DATOS (JSON) =================
+
+function buscarEnBaseConocimiento(texto) {
+    for (let item of BASE_CONOCIMIENTO) {
+        const encontrado = item.tags.some(tag => texto.includes(tag));
+        if (encontrado) {
+            return item;
+        }
+    }
+    return null;
+}
+
+window.onload = function () {
+
+    fetch('https://nuevo.sistemaimacop.com.mx/API/ApiDestinos', {
+        method: 'POST',
+        body: new URLSearchParams({
+            user: 'Imacop',
+            password: '25041988',
+            gih: '0',
+            pagina: '0',
+            num_reg: '5000'
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error en la respuesta del servidor');
+        }
+        return response.json();
+    })
+    .then(data => {
+        // 🔹 Nos quedamos solo con los nombres de destinos
+        DESTINOS_VALIDOS = data.map(d => d.destinationName.toUpperCase());
+
+        data.forEach(d => {
+            DESTINOS_MAP[d.destinationName.toUpperCase()] = {
+                id: d.destinationId,
+                nombre: d.destinationName,
+                imagen: d.destinationImage,
+                descripcion: d.destinationDescription,
+                lat: d.latitude,
+                lng: d.longitude
+            };
+        });
+
+        // 🔹 Habilitar botón
+        const btn = document.getElementById('btn-start');
+        const txt = document.getElementById('estado-texto');
+
+        btn.disabled = false;
+        btn.innerText = "EMPEZAR";
+        btn.classList.remove('bg-gray-600', 'cursor-not-allowed', 'opacity-50');
+        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+        txt.innerText = "";
+    })
+    .catch(error => {
+        document.getElementById('estado-texto').innerText = "ERROR CARGANDO DESTINOS";
+        log('SISTEMA', 'No se pudo obtener la lista de destinos desde el API.');
+    });
+};
+
+// ================= UTILIDADES DE TEXTO =================
+
+function normalizar(texto) {
+    return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function validarDestino(textoUsuario) {
+    let input = normalizar(textoUsuario);
+
+    for (let destino of DESTINOS_VALIDOS) {
+        let destinoClean = normalizar(destino);
+        // Búsqueda flexible (si dice "vallarta" encuentra "Puerto Vallarta")
+        if (destinoClean.includes(input) || input.includes(destinoClean)) {
+            return destino;
+        }
+    }
+    return null;
+}
+
+// ================= INTERFAZ =================
+function setAvatar(tipo) {
+    const img = document.getElementById('avatar-img');
+    const txt = document.getElementById('estado-texto');
+    const mic = document.getElementById('mic-status');
+    img.className = "w-48 h-48 object-contain  border-4 border-indigo-500 bg-white shadow-xl transition-all duration-200";
+
+    if (tipo === 'hablar') {
+        img.src = AVATAR.hablar;
+        img.classList.add('hablando');
+        mic.className = "w-3 h-3 bg-red-500 ";
+        txt.innerText = "HABLANDO...";
+    } else if (tipo === 'oir') {
+        img.src = AVATAR.oir;
+        img.classList.add('escuchando');
+        mic.className = "w-3 h-3 bg-green-500 animate-pulse";
+        txt.innerText = "ESCUCHANDO...";
+    } else if (tipo === 'pensar') {
+        img.src = AVATAR.pensar;
+        mic.className = "w-3 h-3 bg-yellow-500 ";
+        txt.innerText = "PROCESANDO...";
+    } else if (tipo === 'exito') {
+        img.src = AVATAR.exito;
+        txt.innerText = "TERMINADO";
+        mic.className = "w-3 h-3 bg-blue-500 ";
+    } else {
+        img.src = AVATAR.neutral;
+        txt.innerText = "LISTO";
+    }
+}
+
+function log(user, msg) {
+    const box = document.getElementById('chat-box');
+    const color = user === 'BOT' ? 'text-indigo-400' : 'text-green-400';
+    const align = user === 'BOT' ? 'text-left' : 'text-right';
+    box.innerHTML += `<div class="${align}"><span class="${color} font-bold text-xs">${user}</span><br>${msg}</div>`;
+    box.scrollTop = box.scrollHeight;
+}
+
+function hablar(texto, callback)
+{
+    if (!VOCES_LISTAS) {
+        console.warn("⏳ Voces aún no listas, reintentando...");
+        setTimeout(() => hablar(texto, callback), 300);
+        return;
+    }
+
+    synth.cancel();
+    setAvatar('hablar');
+    log('BOT', texto);
+
+    const utter = new SpeechSynthesisUtterance(texto);
+    const voces = synth.getVoices();
+    let voz = null;
+
+    if (AGENTE_ACTIVO?.voz === 'female') {
+        voz = voces.find(v => v.name === VOZ_FEMENINA);
+    } else {
+        voz = voces.find(v => v.name === VOZ_MASCULINA);
+    }
+
+    if (!voz) {
+        voz = voces.find(v => v.lang === 'es-MX')
+            || voces.find(v => v.lang.startsWith('es'));
+    }
+
+    if (voz) {
+        utter.voice = voz;
+        console.log("🎙️ Voz usada:", voz.name);
+    }
+
+    utter.lang   = 'es-MX';
+    utter.rate   = 0.92;
+    utter.pitch  = AGENTE_ACTIVO?.voz === 'female' ? 1.08 : 0.95;
+    utter.volume = 1;
+
+    utter.onend = () => {
+        if (callback) {
+            callback();
+        } else {
+            escuchar();
+        }
+    };
+
+    synth.speak(utter);
+}
+
+function escuchar() {
+    if (escuchando) return;
+    setAvatar('oir');
+    escuchando = true;
+    try {
+        recognition.start();
+    } catch (e) {
+        console.warn("Ya estaba escuchando");
+    }
+}
+
+recognition.onend = () => {
+    escuchando = false;
+    if (estado !== 'OFF') {
+        setTimeout(() => {
+            escuchar();
+        }, 800);
+    }
+};
+
+recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript.toLowerCase();
+    const isFinal = e.results[0].isFinal;
+    document.getElementById('live-text').innerText = transcript;
+    if (isFinal) {
+        recognition.stop();
+        setAvatar('pensar');
+        log('TU', transcript); // Registra lo que se escuchó en el chat
+        setTimeout(() => {
+            cerebro(transcript);
+        }, 500);
+    }
+};
+
+recognition.onerror = (e) => {
+    log('SISTEMA', 'Error de micro: ' + e.error);
+    if (e.error !== "no-speech") {
+        log('SISTEMA', 'Error de micro: ' + e.error);
+    }
+
+    if (e.error === 'not-allowed') {
+        hablar("Necesito permiso para usar el micrófono.");
+    } else if (e.error === 'no-speech') {
+        hablar("No te escuché. Repite por favor.");
+    } else if (e.error === 'network') {
+        escuchando = false;
+        setTimeout(() => escuchar(), 1500);
+    } else {
+        setAvatar('neutral');
+    }
+};
+
+function seleccionarAgente(tipo) {
+    AGENTE_ACTIVO = AGENTES[tipo];
+    AVATAR = AGENTE_ACTIVO.avatar;
+
+    // Ocultar selector
+    document.getElementById('selector-agente').style.display = 'none';
+
+    // Mostrar avatar y botón
+    document.getElementById('bloque-avatar').classList.remove('hidden');
+    document.getElementById('btn-start').classList.remove('hidden');
+
+    setAvatar('neutral');
+
+    document.getElementById('estado-texto').innerText =
+        `Te atenderá ${AGENTE_ACTIVO.nombre}`;
+}
+
+function obtenerVozCorrecta() {
+    const voices = synth.getVoices();
+
+    if (!voices.length) return null;
+
+    if (AGENTE_ACTIVO.voz === 'female') {
+        return voices.find(v =>
+            v.lang.startsWith('es') &&
+            /sabina|paulina|maria|female/i.test(v.name)
+        ) || voices.find(v => v.lang.startsWith('es'));
+    } else {
+        return voices.find(v =>
+            v.lang.startsWith('es') &&
+            /raul|jorge|male/i.test(v.name)
+        ) || voices.find(v => v.lang.startsWith('es'));
+    }
+}
+
+//!MOVIL FORZAR CARGA DE VOCES
+if (speechSynthesis.onvoiceschanged !== undefined) {
+    speechSynthesis.onvoiceschanged = () => {
+        VOCES_LISTAS = true;
+        console.log("Voces cargadas en móvil");
+    };
+}
+
+// Intentar cargar voces manualmente cada segundo hasta que funcione
+let checkVoces = setInterval(() => {
+    let voces = speechSynthesis.getVoices();
+    if (voces.length > 0) {
+        VOCES_LISTAS = true;
+        clearInterval(checkVoces);
+        if(DESTINOS_VALIDOS.length > 0) {
+            const btn = document.getElementById('btn-start');
+            btn.innerText = "EMPEZAR";
+        }
+    }
+}, 1000);
+
+//!INICIAR CONVERSACION
+function iniciar() {
+    if (!AGENTE_ACTIVO) {
+        alert("Por favor selecciona un agente (Ian o Mia) primero.");
+        return;
+    }
+
+    // Desbloqueo de audio para móviles
+    const desbloqueo = new SpeechSynthesisUtterance("");
+    desbloqueo.volume = 0;
+    window.speechSynthesis.speak(desbloqueo);
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+
+    estado = 'MENU';
+
+    // 1. Ocultamos el botón de "EMPEZAR"
+    const btnStart = document.getElementById('btn-start');
+    btnStart.classList.add('hidden');
+
+    // 2. Mostramos el área de input de voz visual
+    const inputArea = document.getElementById('input-area');
+    inputArea.classList.remove('hidden');
+
+    setTimeout(() => {
+        // Mensaje en el chat
+        log('BOT',
+            "<b>Hola, soy tu Asistente Virtual.</b><br>Puedo ayudarte con:<br>" +
+            "🏨 Cotizar Hoteles y Circuitos<br>" +
+            "💳 Subir Pagos y Facturar<br>" +
+            "🎟️ Descargar Cupones y Publicidad<br>" +
+            "👤 Alta de Usuarios y White Label<br>" +
+            "❓ Dudas generales"
+        );
+
+        // Voz del bot (Se elimina la mención a texto)
+        hablar(
+            "Hola, bienvenido. ¿En qué te puedo ayudar? Dime lo que necesitas.",
+            () => {
+                escuchar();
+            }
+        );
+    }, 100);
+}
+
+function desbloquearAudio() {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    speechSynthesis.speak(u);
+}
+
+function cerebro(txt)
+{
+    if (estado === 'MENU')
+    {
+        const respuestaFAQ = buscarEnBaseConocimiento(txt);
+
+        if (respuestaFAQ) {
+            hablar(respuestaFAQ.resp, () => volverAMenu());
+
+            if (respuestaFAQ.url) {
+                mostrarBotonAbrir(respuestaFAQ.info || "Haz clic para ver más detalles", respuestaFAQ.url);
+            } else if (respuestaFAQ.info) {
+                logDestinoVisual("Información Solicitada", "https://via.placeholder.com/300x100?text=Info+en+Pantalla");
+                log('BOT', respuestaFAQ.info);
+            }
+            return;
+        }
+
+        if (txt.includes('cotizar') || txt.includes('viaje')) {
+            estado = 'DESTINO';
+            hablar("Bien. ¿A qué destino viajan?");
+        }
+        else if (txt.includes('pago')) {
+            estado = 'PAGO';
+            hablar("Dime el GDL o localizador.");
+        }
+        // --- ALTA DE USUARIOS ---
+        else if (txt.includes('alta de usuario') || txt.includes('nuevo usuario') || txt.includes('registrar usuario')) {
+            estado = 'ALTA_USUARIO';
+
+            hablar(
+                "Para dar de alta usuarios, dirígete a Mundo Imacop, selecciona Mi Agente, y en el menú lateral izquierdo selecciona Tu Publicidad.",
+                () => { volverAMenu(); }
+            );
+
+            mostrarBotonAbrir(
+                "<b>Pasos para alta de Usuarios:</b><br>1. Ir a 'tu BackOffice : https://reservas.arenia.mx/backoffice'.<br>2. Menu lateral: Seleccionar 'Usuarios por Agencia'.<br>3. Menú superior: 'presionar el boton con simbolo de + <br> Llenar formulario: con los datos del nuevo Usuario'.",
+                "https://agentes.imacop.com.mx/backoffice"
+            );
+        }
+        // ---------------------------------------------
+        else if (txt.includes('publicidad')) {
+            estado = 'PUBLICIDAD';
+
+            hablar(
+                "Excelente decisión. Ya tengo listo el acceso a nuestra sección de publicidad, Aquí encontrarás un banco de promociones actualizadas que puedes descargar, personalizar con el logotipo de tu agencia y compartir libremente con tus clientes.",
+                () => {
+                    volverAMenu();
+                }
+            );
+
+            mostrarBotonAbrir(
+                "Aquí encontrarás un banco de promociones actualizadas que puedes descargar, personalizar con el logotipo de tu agencia y compartir libremente con tus clientes.",
+                "https://agentes.imacop.com.mx/backoffice/imacop/publicidad"
+            );
+        }
+        else if (txt.includes('guía')) {
+            estado = 'GUÍA';
+
+            hablar(
+                "Excelente elección. Te dejo el acceso a nuestra guía interactiva de hoteles, Consulta destinos, hoteles, habitaciones e instalaciones para asesorar mejor a tus clientes.",
+                () => {
+                    volverAMenu();
+                }
+            );
+
+            mostrarBotonAbrir(
+                "Consulta destinos, hoteles, habitaciones e instalaciones para asesorar mejor a tus clientes.",
+                "https://guiainteractivadehoteles.com"
+            );
+        }
+        else if (txt.includes('factura')) {
+            estado = 'FACTURA';
+
+            hablar(
+                "Perfecto. Aquí tienes el acceso a nuestro portal de facturación electrónica,Recuerda que solo se puede facturar el mes en curso. Te recomendamos hacerlo a tiempo.",
+                () => {
+                    volverAMenu();
+                }
+            );
+
+            mostrarBotonAbrir(
+                "Recuerda que solo se puede facturar el mes en curso. Te recomendamos hacerlo a tiempo.",
+                "https://facturacion.imacoponline.com/index.php"
+            );
+        }
+        else if (txt.includes('capacitación') || txt.includes('capacitar') ) {
+            estado = 'CAPACITACION';
+            hablar(
+                "Entendido, excelente elección. Te redirigiré a nuestro portal de capacitación, donde podrás mantenerte actualizado y fortalecer tus conocimientos como agente de viajes.",
+                () => {
+                    volverAMenu();
+                }
+            );
+
+            mostrarBotonAbrir(
+                "Entendido, excelente elección. Te redirigiré a nuestro portal de capacitación, donde podrás mantenerte actualizado y fortalecer tus conocimientos como agente de viajes.",
+                "https://agentes.imacop.com.mx/backoffice/imacop/capacitaciones"
+            );
+        }
+        else {
+            hablar("No entendí. Di Cotizar , Subir Pago o Facturar");
+        }
+        return;
+    }
+
+    if (estado === 'PAGO') {
+        let nums = txt.replace(/\D/g, '');
+        if (nums) finalizar('pago', nums);
+        else hablar("Repite el número por favor.");
+        return;
+    }
+
+    if (estado === 'DESTINO') {
+        const destinoEncontrado = validarDestino(txt);
+
+        if (destinoEncontrado) {
+            datos.destino = destinoEncontrado;
+
+             // Mostrar la Imagen
+             datos.imagenDestino = DESTINOS_MAP[destinoEncontrado]?.imagen || null;
+             let imagen_destino_completa='https://nuevo.sistemaimacop.com.mx/'+datos.imagenDestino;
+               logDestinoVisual(destinoEncontrado, imagen_destino_completa);
+
+            estado = 'FECHA_IN';
+            hablar(`Perfecto, ${destinoEncontrado}. Dime la fecha de ENTRADA. Ejemplo: 20 de mayo.`);
+        } else {
+            hablar(`No encontré "${txt}" en la base de datos. Intenta con otro.`);
+        }
+        return;
+    }
+
+    if (estado === 'FECHA_IN') {
+        const fechaObj = parsearFecha(txt);
+        if (!fechaObj) {
+            hablar("No entendí la fecha. Intenta: Día y Mes.");
+            return;
+        }
+        let hoy = new Date(); hoy.setHours(0,0,0,0);
+        if (fechaObj < hoy) {
+            hablar("Esa fecha ya pasó. Dime una fecha futura.");
+            return;
+        }
+        datos.fechaEntrada = fechaObj;
+        datos.strEntrada = txt;
+        estado = 'FECHA_OUT';
+        hablar("Ok. Ahora dime la fecha de SALIDA.");
+        return;
+    }
+
+    if (estado === 'FECHA_OUT') {
+        const fechaObj = parsearFecha(txt);
+        if (!fechaObj) {
+            hablar("Repite la fecha de salida.");
+            return;
+        }
+        if (fechaObj <= datos.fechaEntrada) {
+            hablar(`La salida debe ser posterior a la entrada. Dime otra fecha.`);
+            return;
+        }
+        datos.fechaSalida = fechaObj;
+        estado = 'HABITACIONES';
+        hablar("Fechas correctas. ¿Cuántas habitaciones necesitan?");
+        return;
+    }
+
+    if (estado === 'HABITACIONES') {
+        let cant = obtenerNumero(txt) || 1;
+        datos.habitaciones = cant;
+        datos.habActual = 1;
+        datos.habData = [];
+        for(let i=0; i<cant; i++) datos.habData.push({adultos:0, menores:0, edades:''});
+
+        estado = 'ADULTOS';
+        let preg = cant === 1 ? "¿Cuántos adultos van?" : "Habitación 1. ¿Cuántos adultos?";
+        hablar(preg);
+        return;
+    }
+
+    if (estado === 'ADULTOS') {
+        let num = obtenerNumero(txt);
+        if (num === 0) num = 2;
+        datos.habData[datos.habActual-1].adultos = num;
+
+        estado = 'MENORES';
+        hablar("¿Cuántos menores? Di cero si no hay.");
+        return;
+    }
+
+    if (estado === 'MENORES') {
+        let num = obtenerNumero(txt);
+        if (num === 0) {
+            if (txt.includes('cero') || txt.includes('no') || txt.includes('ninguno') || txt.includes('nadie')) {
+                num = 0;
+            } else if (txt.includes('niño') || txt.includes('menor') || txt.includes('bebe') || txt.includes('hijo')) {
+                num = 1;
+            }
+        }
+        datos.habData[datos.habActual-1].menores = num;
+        if (num > 0) {
+            estado = 'EDADES';
+            hablar(`Entendido, ${num} menores. Dime sus edades.`);
+        } else {
+            siguienteHabitacion();
+        }
+        return;
+    }
+
+    if (estado === 'EDADES') {
+        datos.habData[datos.habActual-1].edades = txt;
+        siguienteHabitacion();
+        return;
+    }
+}
+
+function siguienteHabitacion() {
+    if (datos.habActual < datos.habitaciones) {
+        datos.habActual++;
+        estado = 'ADULTOS';
+        hablar(`Listo. Vamos con la habitación ${datos.habActual}. ¿Cuántos adultos?`);
+    } else {
+        finalizar('cotizar', null);
+    }
+}
+
+function obtenerNumero(txt) {
+    let matches = txt.match(/\d+/);
+    if (matches) return parseInt(matches[0]);
+    const nums = { 'un': 1, 'uno':1, 'una':1, 'unos': 1, 'dos':2, 'tres':3, 'cuatro':4, 'cinco':5, 'seis':6 };
+    for (let k in nums) {
+        if (new RegExp(`\\b${k}\\b`, 'i').test(txt)) return nums[k];
+    }
+    return 0;
+}
+
+function parsearFecha(texto) {
+    const meses = {
+        'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5,
+        'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11
+    };
+    let diaMatch = texto.match(/\d+/);
+    if (!diaMatch) return null;
+    let dia = parseInt(diaMatch[0]);
+    let mes = -1;
+    for (let m in meses) { if (texto.includes(m)) { mes = meses[m]; break; } }
+    if (mes === -1) return null;
+    let hoy = new Date();
+    let anio = hoy.getFullYear();
+    if (hoy.getMonth() > 8 && mes < 3) anio++;
+    return new Date(anio, mes, dia);
+}
+
+function finalizar(tipo, payload) {
+    setAvatar('exito');
+    estado = 'FIN';
+
+    if (tipo === 'pago') {
+        console.log("PAGO GDL:", payload);
+
+        let id_agencia_dinamico=48384;
+        hablar(
+            `He detectado el GDL ${payload}. Te redirigiré a la sección de carga de pagos.`,
+            () => {
+                volverAMenu();
+            }
+        );
+        mostrarBotonAbrir(
+            "Aquí tienes el modulo de carga de pagos , aqui puedes subir los comprobantes de pagos de tus reservas",
+            `https://nuevo.sistemaimacop.com.mx/subir_pago_agencia.php?id_agencia=${id_agencia_dinamico}`
+        );
+    }
+    else {
+        console.clear();
+        console.log("%c DATOS COMPLETOS ", "background: #22c55e; color: white; padding: 5px; font-weight: bold;");
+        console.log("DESTINO:", datos.destino);
+        console.log("ENTRADA:", datos.fechaEntrada.toLocaleDateString());
+        console.log("SALIDA: ", datos.fechaSalida.toLocaleDateString());
+        console.table(datos.habData);
+
+        hablar(
+            `He terminado de cotizar , encontre losmejores resultados para ${datos.destino}, te entrego la lista` ,
+        () => {
+            volverAMenu();
+        } );
+
+        mostrarBotonAbrir(
+            `He terminado de cotizar , encontre losmejores resultados para ${datos.destino}, te entrego la lista`,
+            `https://agentes.imacop.com.mx/busquedas/resultados/12045191oghs5/Hoteles`
+        );
+    }
+}
+
+function obtenerVozLatina() {
+    const voces = speechSynthesis.getVoices();
+
+    return voces.find(v =>
+        v.lang === 'es-MX' &&
+        (v.name.includes('Google') || v.name.includes('Microsoft'))
+    ) ||
+    voces.find(v => v.lang.startsWith('es')) ||
+    voces[0];
+}
+
+speechSynthesis.onvoiceschanged = () => {
+    const voces = speechSynthesis.getVoices();
+    if (voces.length > 0) {
+        VOCES_LISTAS = true;
+        console.log(
+            "🎧 Voces listas:",
+            voces.map(v => `${v.name} (${v.lang})`)
+        );
+    }
+};
+
+function logDestinoVisual(destino, imagenUrl) {
+    const box = document.getElementById('chat-box');
+
+    box.innerHTML += `
+        <div class="text-left space-y-2">
+            <span class="text-indigo-400 font-bold text-xs">BOT</span>
+
+            <div class="bg-slate-800 border border-indigo-500 rounded-xl overflow-hidden shadow-lg max-w-xs">
+                    <img src="${imagenUrl}"
+                    onclick="window.open('${imagenUrl}','_blank')"
+                    class="cursor-pointer w-full h-32 object-cover"  alt="${destino}">
+
+                <div class="p-3 text-sm">
+                    <p class="text-white font-semibold">${destino}</p>
+                    <p class="text-xs text-indigo-300">Destino seleccionado</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    box.scrollTop = box.scrollHeight;
+}
+
+function mostrarBotonAbrir(texto, url) {
+    const box = document.getElementById('chat-box');
+
+    box.innerHTML += `
+        <div class="text-left space-y-2 animate-fade-in">
+            <span class="text-indigo-400 font-bold text-xs">BOT</span>
+
+            <div class="bg-slate-800 border border-indigo-500 rounded-xl p-3 space-y-2 max-w-xs">
+                <p class="text-sm text-white">${texto}</p>
+
+                <button
+                    onclick="window.open('${url}', '_blank')"
+                    class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-semibold">
+                    Abrir ahora
+                </button>
+            </div>
+        </div>
+    `;
+
+    box.scrollTop = box.scrollHeight;
+}
+
+function volverAMenu(delay = 800) {
+    setTimeout(() => {
+        estado = 'MENU';
+        hablar(
+            "¿Puedo ayudarte en algo más? Puedes decir cotizar, facturar o publicidad.",
+            () => escuchar()
+        );
+    }, delay);
+}
