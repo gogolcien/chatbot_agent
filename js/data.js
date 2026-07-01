@@ -99,11 +99,10 @@ const AGENTES = {
         genero: 'masculino',
         voz: 'male',
         avatar: {
-            neutral: './assets/ian/saludo.gif',
-            hablar: './assets/ian/explicando.gif',
-            oir: './assets/ian/escuchando.gif',
-            pensar: './assets/ian/pensando.gif',
-            exito: './assets/ian/exito.gif'
+            neutral: './assets/IAN.gif',
+            hablar: './assets/IAN.gif',
+            pensar: './assets/IAN.gif',
+            exito: './assets/IAN.gif'
         }
     },
     mia: {
@@ -111,11 +110,10 @@ const AGENTES = {
         genero: 'femenino',
         voz: 'female',
         avatar: {
-            neutral: './assets/mia/saludo.gif',
-            hablar: './assets/mia/explicando.gif',
-            oir: './assets/mia/escuchando.gif',
-            pensar: './assets/mia/pensando.gif',
-            exito: './assets/mia/exito.gif'
+            neutral: './assets/MIA.gif',
+            hablar: './assets/MIA.gif',
+            pensar: './assets/MIA.gif',
+            exito: './assets/MIA.gif'
         }
     }
 };

@@ -13,8 +13,6 @@
 
             <div class="bg-gradient-to-b from-indigo-700 to-indigo-900 py-6 relative text-center">
 
-                <div id="mic-status" class="absolute top-4 right-4 w-3 h-3 rounded-full bg-gray-500"></div>
-
                 <img src="./assets/logo.png"
                     class="mx-auto w-32 md:w-40 drop-shadow-xl mb-3"
                     alt="Logo">
@@ -28,12 +26,12 @@
             <div id="selector-agente" class="flex gap-6 justify-center p-4">
                 <button onclick="seleccionarAgente('ian')" class="bg-slate-800 hover:bg-indigo-600 p-4 rounded-xl">
                     <img src="./assets/IAN.gif" alt=""><br>
-                    Ian<br><span class="text-xs text-gray-400">Voz masculina</span>
+                    Ian<br><span class="text-xs text-gray-400">Chat de texto</span>
                 </button>
 
                 <button onclick="seleccionarAgente('mia')" class="bg-slate-800 hover:bg-pink-600 p-4 rounded-xl">
                     <img src="./assets/MIA.gif" alt=""><br>
-                    Mia<br><span class="text-xs text-gray-400">Voz femenina</span>
+                    Mia<br><span class="text-xs text-gray-400">Chat de texto</span>
                 </button>
             </div>
 
@@ -51,8 +49,21 @@
             </div>
 
             <div id="input-area" class="px-4 py-3 bg-slate-900 border-t border-slate-800 hidden">
-                <p class="text-gray-500 text-xs text-center mb-1">Transcripción de voz:</p>
-                <p id="live-text" class="text-indigo-400 text-sm h-6 truncate text-center font-semibold">...</p>
+                <div class="flex gap-2">
+                    <input
+                        id="text-input"
+                        type="text"
+                        placeholder="Escribe tu mensaje..."
+                        disabled
+                        autocomplete="off"
+                        class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 disabled:opacity-50">
+                    <button
+                        id="btn-send"
+                        disabled
+                        class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-semibold text-sm transition">
+                        Enviar
+                    </button>
+                </div>
             </div>
 
             <button id="btn-start" onclick="iniciar()" disabled class="w-full bg-gray-600 cursor-not-allowed py-4 font-bold text-lg transition opacity-50 hidden rounded-b-xl">
@@ -63,11 +74,11 @@
         <!--
             Orden de carga importante:
             1) data.js   -> define BASE_CONOCIMIENTO, AGENTES, VOZ_MASCULINA, VOZ_FEMENINA
-            2) app.js    -> usa esas variables y define toda la lógica (cerebro, hablar, etc.)
+            2) brain.js  -> usa esas variables y define toda la lógica (cerebro, hablar, etc.)
             3) particles.js (librería) + particles-config.js -> inicializa el fondo animado
         -->
         <script src="./js/data.js"></script>
-        <script src="./js/app.js"></script>
+        <script src="./js/brain.js"></script>
 
         <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
         <script src="./js/particles-config.js"></script>
