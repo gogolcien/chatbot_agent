@@ -9,7 +9,6 @@
     animation: fadeIn 0.4s ease-out;
 }
 
-/* Estilos del input de texto */
 #text-input:disabled {
     opacity: 0.5;
     cursor: not-allowed;

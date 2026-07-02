@@ -92,7 +92,6 @@ const BASE_CONOCIMIENTO = [
     }
 ];
 
-// ================= AGENTES =================
 const AGENTES = {
     ian: {
         nombre: 'Ian',
@@ -100,9 +99,9 @@ const AGENTES = {
         voz: 'male',
         avatar: {
             neutral: './assets/IAN.gif',
-            hablar: './assets/IAN.gif',
-            pensar: './assets/IAN.gif',
-            exito: './assets/IAN.gif'
+            hablar: './assets/ian/saludo.gif',
+            pensar: './assets/ian/escuchando.gif',
+            exito: './assets/ian/explicando.gif'
         }
     },
     mia: {
@@ -111,12 +110,10 @@ const AGENTES = {
         voz: 'female',
         avatar: {
             neutral: './assets/MIA.gif',
-            hablar: './assets/MIA.gif',
-            pensar: './assets/MIA.gif',
-            exito: './assets/MIA.gif'
+            hablar: './assets/mia/saludo.gif',
+            pensar: './assets/mia/escuchando.gif',
+            exito: './assets/mia/explicando.gif'
         }
     }
 };
 
-const VOZ_MASCULINA = 'Microsoft Raul - Spanish (Mexico)';
-const VOZ_FEMENINA  = 'Microsoft Sabina - Spanish (Mexico)';

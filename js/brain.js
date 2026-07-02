@@ -163,7 +163,7 @@ function setAvatar(tipo) {
         txt.innerText = "TERMINADO";
     } else {
         img.src = AVATAR.neutral;
-        txt.innerText = "ESCRIBE TU PETICIÓN...";
+        txt.innerText = "ESCRIBE TU DUDA...";
     }
 }
 
@@ -277,23 +277,19 @@ function iniciar() {
 
     setTimeout(() => {
         log('BOT',
-            "<b>Hola, soy tu Asistente Virtual.</b><br>Puedo ayudarte con:<br>" +
-            "🏨 Cotizar precio de Hoteles y Circuitos<br>" +
+            "<b>Hola, Bienvenido, soy tu Asistente Virtual.</b>"+
+            "<br>🏨 Cotizar precio de Hoteles y Circuitos<br>" +
             "💳 Subir Pagos<br>" +
             "📄 Facturación<br>" +
             "🎟️ Descargar Cupones y Publicidad<br>" +
             "👤 Alta de Usuarios y White Label<br>" +
             "🧑‍🏫 Capacitación<br>"+
             "⤴️ Guía para asesorar a tus clientes<br>"+
-            "❓ Dudas generales"
+            "❓ Dudas generales<br>"+
+            "<b>¿En qué te puedo ayudar? Escribe lo que necesitas.</b>"
         );
-
-        hablar(
-            "Hola, bienvenido. ¿En qué te puedo ayudar? Escribe lo que necesitas.",
-            () => {
-                escuchar();
-            }
-        );
+        escuchar();
+            
     }, 100);
 }
 
@@ -481,7 +477,7 @@ function cerebro(txt)
         datos.habData[datos.habActual-1].adultos = num;
 
         estado = 'MENORES';
-        hablar("¿Cuántos menores? Di cero si no hay.");
+        hablar("¿Cuántos menores? Escribe cero si no hay.");
         return;
     }
 
@@ -638,7 +634,7 @@ function volverAMenu(delay = 3000) {
         estado = 'MENU';
         hablar(
             "<b>¿Puedo ayudarte en algo más?</b>"+
-            "<br>El asistente virtual cuenta con los siguientes servicios:<br>" +
+            "<br>Cuento con los siguientes servicios:<br>" +
             "🏨 Cotizar precio de Hoteles y Circuitos<br>" +
             "💳 Subir Pagos<br>" +
             "📄 Facturación<br>" +
