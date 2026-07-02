@@ -1,29 +1,99 @@
 let AGENTE_ACTIVO = null;
 
 const OLLAMA_URL = 'http://localhost:11434/api/chat';
-const OLLAMA_MODEL = 'qwen3:14b';
+const OLLAMA_MODEL = 'ornith'; // modelo de CHAT/generación
 
-function construirSystemPrompt() {
-    const kbTexto = BASE_CONOCIMIENTO.map(item => `- ${item.resp}`).join('\n');
+// ================= RAG: EMBEDDINGS =================
+const OLLAMA_EMBED_URL = 'http://localhost:11434/api/embed';
+const OLLAMA_EMBED_MODEL = 'nomic-embed-text'; // modelo dedicado a EMBEDDINGS (no uses gemma4 aquí)
+const RAG_TOP_K = 3;              // cuántos fragmentos como máximo se le pasan al modelo
+const RAG_UMBRAL_SIMILITUD = 0.55; // por debajo de esto, se considera "no relevante"
+
+let EMBEDDINGS_KB = []; // se llena al cargar embeddings.json (precalculado offline)
+
+function cargarEmbeddings() {
+    fetch('./embeddings.json')
+        .then(res => {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(data => {
+            EMBEDDINGS_KB = data;
+            console.log(`RAG: base vectorial cargada (${EMBEDDINGS_KB.length} fragmentos).`);
+        })
+        .catch(err => {
+            console.warn('RAG: no se pudo cargar embeddings.json. Se seguirá funcionando sin RAG.', err);
+        });
+}
+
+function similitudCoseno(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+async function obtenerEmbeddingConsulta(texto) {
+    const res = await fetch(OLLAMA_EMBED_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: texto })
+    });
+    if (!res.ok) throw new Error('Ollama embeddings respondió ' + res.status);
+    const data = await res.json();
+    return data.embeddings[0];
+}
+
+// Devuelve los N fragmentos de la KB más parecidos semánticamente a "texto",
+// ya filtrados por el umbral de similitud mínima.
+async function buscarPorRAG(texto, topK = RAG_TOP_K) {
+    if (!EMBEDDINGS_KB.length) return [];
+
+    const vectorConsulta = await obtenerEmbeddingConsulta(texto);
+
+    return EMBEDDINGS_KB
+        .map(item => ({ item, score: similitudCoseno(vectorConsulta, item.embedding) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK)
+        .filter(r => r.score >= RAG_UMBRAL_SIMILITUD);
+}
+
+function construirSystemPrompt(fragmentos) {
+    const kbTexto = fragmentos.length
+        ? fragmentos.map(f => `- ${f.item.resp}`).join('\n')
+        : '(No se encontró información relacionada en la base de conocimiento.)';
+
     return (
         "Eres el asistente virtual de IMACOP, una operadora de viajes que atiende " +
         "a agentes de viaje registrados. Responde ÚNICAMENTE con base en la " +
         "siguiente información oficial. Si la pregunta no está cubierta por esta " +
         "información, dilo con honestidad y sugiere contactar al equipo de ventas " +
         "al 33-3333-3333, en vez de inventar una respuesta.\n\n" +
-        `INFORMACIÓN OFICIAL:\n${kbTexto}\n\n` +
+        `INFORMACIÓN OFICIAL RELEVANTE:\n${kbTexto}\n\n` +
         "Responde en español de México, en 2-3 frases como máximo, tono natural."
     );
 }
 
-function preguntarIA(txt) {
+async function preguntarIA(txt) {
+    let fragmentos = [];
+    try {
+        fragmentos = await buscarPorRAG(txt);
+    } catch (err) {
+        console.error('RAG: error obteniendo embedding de la consulta:', err);
+        // seguimos sin contexto; el system prompt ya le indica al modelo
+        // qué hacer cuando no hay información relevante.
+    }
+
     fetch(OLLAMA_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             model: OLLAMA_MODEL,
             messages: [
-                { role: 'system', content: construirSystemPrompt() },
+                { role: 'system', content: construirSystemPrompt(fragmentos) },
                 { role: 'user', content: txt }
             ],
             stream: false
@@ -45,6 +115,7 @@ function preguntarIA(txt) {
         });
 }
 
+// ================= CONFIGURACIÓN =================
 AVATAR = {
     neutral: './assets/saludo.gif',
     hablar: './assets/explicando.gif',
@@ -66,6 +137,7 @@ let datos = {
     habData: []
 };
 
+// ================= CARGA DE DATOS (JSON) =================
 function buscarEnBaseConocimiento(texto) {
     for (let item of BASE_CONOCIMIENTO) {
         const encontrado = item.tags.some(tag => texto.includes(tag));
@@ -77,6 +149,8 @@ function buscarEnBaseConocimiento(texto) {
 }
 
 window.onload = function () {
+
+    cargarEmbeddings(); // RAG: precarga la base vectorial en paralelo
 
     fetch('https://nuevo.sistemaimacop.com.mx/API/ApiDestinos', {
         method: 'POST',
@@ -125,6 +199,7 @@ window.onload = function () {
     });
 };
 
+// ================= UTILIDADES DE TEXTO =================
 function normalizar(texto) {
     return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -142,6 +217,7 @@ function validarDestino(textoUsuario) {
     return null;
 }
 
+// ================= INTERFAZ =================
 function setAvatar(tipo) {
     const img = document.getElementById('avatar-img');
     const txt = document.getElementById('estado-texto');
@@ -307,7 +383,7 @@ function cerebro(txt)
             return;
         }
 
-        if (txt.includes('cotizar') || txt.includes('viaje')) {
+        if (txt.includes('cotizar') || txt.includes('viaje')|| txt.includes('hotel') || txt.includes('cotiza')|| txt.includes('viajar')) {
             estado = 'DESTINO';
             hablar("Bien. ¿A qué destino viajan?");
         }
@@ -345,7 +421,7 @@ function cerebro(txt)
                 "https://agentes.imacop.com.mx/backoffice/imacop/publicidad"
             );
         }
-        else if (txt.includes('guía')) {
+        else if (txt.includes('guía') || txt.includes('guia')) {
             estado = 'GUÍA';
 
             hablar(
@@ -360,7 +436,7 @@ function cerebro(txt)
                 "https://guiainteractivadehoteles.com"
             );
         }
-        else if (txt.includes('factura')) {
+        else if (txt.includes('factura') || txt.includes('facturacion') || txt.includes('facturar') || txt.includes('facuración')) {
             estado = 'FACTURA';
 
             hablar(
@@ -375,7 +451,7 @@ function cerebro(txt)
                 "https://facturacion.imacoponline.com/index.php"
             );
         }
-        else if (txt.includes('capacitación') || txt.includes('capacitar') ) {
+        else if (txt.includes('capacitación') || txt.includes('capacitar') || txt.includes('capacita') || txt.includes('capacitacion')) {
             estado = 'CAPACITACION';
             hablar(
                 "Entendido, excelente elección. Te redirigiré a nuestro portal de capacitación, donde podrás mantenerte actualizado y fortalecer tus conocimientos como agente de viajes.",
@@ -413,7 +489,7 @@ function cerebro(txt)
                logDestinoVisual(destinoEncontrado, imagen_destino_completa);
 
             estado = 'FECHA_IN';
-            hablar(`Perfecto, ${destinoEncontrado}. Dime la fecha en que iniciaras el viaje. Ejemplo: 20 de mayo.`);
+            hablar(`Perfecto, ${destinoEncontrado}. Dime la fecha en que iniciaras el viaje. Ejemplo: 20 de julio.`);
         } else {
             hablar(`No encontré "${txt}" en la base de datos. Intenta con otro.`);
         }

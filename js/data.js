@@ -1,7 +1,7 @@
 // ================= BASE DE CONOCIMIENTO (FAQ) =================
 const BASE_CONOCIMIENTO = [
     {
-        tags: ['cuentas', 'depositar', 'banco', 'transferencia', 'donde deposito', 'subir mi pago'],
+        tags: ['cuentas', 'depositar', 'banco', 'transferencia', 'donde deposito', 'subir mi pago', 'pagar', 'paga'],
         resp: "Nuestras cuentas son en Santander y Banamex.,Deberá enviar comprobante de pago a tu agente especificando el folio de la reservación, así como el nombre del titular de la misma. El depósito o transferencia puede realizarlo en cualquiera de las cuentas a nombre de Corporation Travel S.A de C.V. que se listan a continuación",
         url: null,
         info: ` Deberá enviar comprobante de pago a tu agente especificando el folio de la reservación, así como el nombre del titular de la misma. El depósito o transferencia puede realizarlo en cualquiera de las cuentas a nombre de Corporation Travel S.A de C.V. que se listan a continuación:<br>
@@ -16,12 +16,12 @@ const BASE_CONOCIMIENTO = [
         url: "https://agentes.imacop.com.mx/perfil"
     },
     {
-        tags: ['colores', 'descuento', 'color'],
+        tags: ['colores', 'descuento', 'color', 'verde', 'amarillo'],
         resp: "Los colores indican la disponibilidad y el descuento especial aplicado. Verde es disponible inmediato, Amarillo requiere verificación.",
         url: null
     },
     {
-        tags: ['horarios imacop', 'hora imacop', 'abierto en imacop'],
+        tags: ['horarios imacop', 'hora imacop', 'abierto en imacop', 'días habiles', 'dias habiles'],
         resp: "Nuestro horario de atención es de Lunes a Viernes de 9 de la mañana a 7 de la tarde, y sábados de 9 a 2.",
         url: null
     },
@@ -31,12 +31,12 @@ const BASE_CONOCIMIENTO = [
         url: null
     },
     {
-        tags: ['publicidad por whatsapp', 'publicidad por celular', 'publicidad por mensaje'],
+        tags: ['publicidad por whatsapp', 'publicidad por celular', 'publicidad por mensaje','publicidad'],
         resp: "Claro, para recibir publicidad por WhatsApp, por favor regístrate en el siguiente enlace.",
         url: "https://wa.me/5213333333333"
     },
     {
-        tags: ['donde consulto las amenidades', 'donde veo que incluye el hotel', 'donde consulto que incluye el hotel'],
+        tags: ['donde consulto las amenidades', 'donde veo que incluye el hotel', 'donde consulto que incluye el hotel', 'amenindades', 'todo incluido'],
         resp: "Las amenidades específicas aparecen en la ficha de cada hotel dentro de la plataforma al momento de cotizar.",
         url: null
     },
@@ -81,12 +81,12 @@ const BASE_CONOCIMIENTO = [
         url: "https://agentes.imacop.com.mx/grupos"
     },
     {
-        tags: ['visa', 'pasaporte', 'documentación'],
+        tags: ['visa', 'pasaporte', 'documentación', 'visado', 'extranjero'],
         resp: "Nosotros te asesoramos, pero el trámite de visados y pasaportes es responsabilidad directa del pasajero.",
         url: null
     },
     {
-        tags: ['seguro', 'aseguradora'],
+        tags: ['seguro', 'aseguradora','viajero'],
         resp: "Nuestros paquetes pueden incluir seguro de viajero si lo seleccionas al momento de reservar. Te recomendamos siempre ofrecerlo.",
         url: null
     }
@@ -116,4 +116,12 @@ const AGENTES = {
         }
     }
 };
+
+// ================= COMPATIBILIDAD CON NODE.JS =================
+// Permite reutilizar BASE_CONOCIMIENTO desde generar-embeddings.js
+// (script offline) sin duplicar la base de conocimiento.
+// En el navegador esta rama nunca se ejecuta.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { BASE_CONOCIMIENTO, AGENTES };
+}
 
