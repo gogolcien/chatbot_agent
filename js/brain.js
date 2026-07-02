@@ -45,7 +45,6 @@ function preguntarIA(txt) {
         });
 }
 
-// ================= CONFIGURACIÓN =================
 AVATAR = {
     neutral: './assets/saludo.gif',
     hablar: './assets/explicando.gif',
@@ -67,7 +66,6 @@ let datos = {
     habData: []
 };
 
-// ================= CARGA DE DATOS (JSON) =================
 function buscarEnBaseConocimiento(texto) {
     for (let item of BASE_CONOCIMIENTO) {
         const encontrado = item.tags.some(tag => texto.includes(tag));
@@ -127,7 +125,6 @@ window.onload = function () {
     });
 };
 
-// ================= UTILIDADES DE TEXTO =================
 function normalizar(texto) {
     return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -145,7 +142,6 @@ function validarDestino(textoUsuario) {
     return null;
 }
 
-// ================= INTERFAZ =================
 function setAvatar(tipo) {
     const img = document.getElementById('avatar-img');
     const txt = document.getElementById('estado-texto');
