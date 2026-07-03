@@ -1,121 +1,59 @@
 let AGENTE_ACTIVO = null;
 
-const OLLAMA_URL = 'http://localhost:11434/api/chat';
-const OLLAMA_MODEL = 'ornith'; // modelo de CHAT/generación
+// ================= OPEN WEBUI (backend con RAG integrado) =================
+// Ya no llamamos a Ollama directamente ni hacemos RAG manual en el navegador:
+// Open WebUI corre en tu servidor local, ahí subes los documentos de la base
+// de conocimiento (Admin > Knowledge) y los asocias a un modelo (Workspace >
+// Models). Ese modelo ya sabe buscar en tus documentos solo, así que aquí
+// nada más le mandamos la pregunta del usuario.
+const OPENWEBUI_URL = 'http://localhost:8080/api/chat/completions';
+const OPENWEBUI_API_KEY = 'sk-2a8cfbd6f5414ded97d111ab08101b19'; // Settings > Account > API Keys dentro de Open WebUI
+const OPENWEBUI_MODEL = 'imacop-agente-v1';     // el "id" del modelo que armaste en Open WebUI con tu Knowledge adjunto
 
-// ================= RAG: EMBEDDINGS =================
-const OLLAMA_EMBED_URL = 'http://localhost:11434/api/embed';
-const OLLAMA_EMBED_MODEL = 'nomic-embed-text'; // modelo dedicado a EMBEDDINGS (no uses gemma4 aquí)
-const RAG_TOP_K = 3;              // cuántos fragmentos como máximo se le pasan al modelo
-const RAG_UMBRAL_SIMILITUD = 0.55; // por debajo de esto, se considera "no relevante"
-
-let EMBEDDINGS_KB = []; // se llena al cargar embeddings.json (precalculado offline)
-
-function cargarEmbeddings() {
-    fetch('./embeddings.json')
-        .then(res => {
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return res.json();
-        })
-        .then(data => {
-            EMBEDDINGS_KB = data;
-            console.log(`RAG: base vectorial cargada (${EMBEDDINGS_KB.length} fragmentos).`);
-        })
-        .catch(err => {
-            console.warn('RAG: no se pudo cargar embeddings.json. Se seguirá funcionando sin RAG.', err);
-        });
-}
-
-function similitudCoseno(a, b) {
-    let dot = 0, normA = 0, normB = 0;
-    for (let i = 0; i < a.length; i++) {
-        dot += a[i] * b[i];
-        normA += a[i] * a[i];
-        normB += b[i] * b[i];
-    }
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-async function obtenerEmbeddingConsulta(texto) {
-    const res = await fetch(OLLAMA_EMBED_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: OLLAMA_EMBED_MODEL, input: texto })
-    });
-    if (!res.ok) throw new Error('Ollama embeddings respondió ' + res.status);
-    const data = await res.json();
-    return data.embeddings[0];
-}
-
-// Devuelve los N fragmentos de la KB más parecidos semánticamente a "texto",
-// ya filtrados por el umbral de similitud mínima.
-async function buscarPorRAG(texto, topK = RAG_TOP_K) {
-    if (!EMBEDDINGS_KB.length) return [];
-
-    const vectorConsulta = await obtenerEmbeddingConsulta(texto);
-
-    return EMBEDDINGS_KB
-        .map(item => ({ item, score: similitudCoseno(vectorConsulta, item.embedding) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topK)
-        .filter(r => r.score >= RAG_UMBRAL_SIMILITUD);
-}
-
-function construirSystemPrompt(fragmentos) {
-    const kbTexto = fragmentos.length
-        ? fragmentos.map(f => `- ${f.item.resp}`).join('\n')
-        : '(No se encontró información relacionada en la base de conocimiento.)';
-
+function construirSystemPrompt() {
     return (
         "Eres el asistente virtual de IMACOP, una operadora de viajes que atiende " +
-        "a agentes de viaje registrados. Responde ÚNICAMENTE con base en la " +
-        "siguiente información oficial. Si la pregunta no está cubierta por esta " +
-        "información, dilo con honestidad y sugiere contactar al equipo de ventas " +
-        "al 33-3333-3333, en vez de inventar una respuesta.\n\n" +
-        `INFORMACIÓN OFICIAL RELEVANTE:\n${kbTexto}\n\n` +
+        "a agentes de viaje registrados. Responde únicamente con base en los " +
+        "documentos de tu base de conocimiento. Si la pregunta no está cubierta " +
+        "por esa información, dilo con honestidad y sugiere contactar al equipo " +
+        "de ventas al 33-3333-3333, en vez de inventar una respuesta. " +
         "Responde en español de México, en 2-3 frases como máximo, tono natural."
     );
 }
 
 async function preguntarIA(txt) {
-    let fragmentos = [];
-    try {
-        fragmentos = await buscarPorRAG(txt);
-    } catch (err) {
-        console.error('RAG: error obteniendo embedding de la consulta:', err);
-        // seguimos sin contexto; el system prompt ya le indica al modelo
-        // qué hacer cuando no hay información relevante.
-    }
-
-    fetch(OLLAMA_URL, {
+    fetch(OPENWEBUI_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENWEBUI_API_KEY}`
+        },
         body: JSON.stringify({
-            model: OLLAMA_MODEL,
+            model: OPENWEBUI_MODEL,
             messages: [
-                { role: 'system', content: construirSystemPrompt(fragmentos) },
+                { role: 'system', content: construirSystemPrompt() },
                 { role: 'user', content: txt }
             ],
             stream: false
         })
     })
         .then(res => {
-            if (!res.ok) throw new Error('Ollama respondió ' + res.status);
+            if (!res.ok) throw new Error('Open WebUI respondió ' + res.status);
             return res.json();
         })
         .then(data => {
-            hablar(data.message.content, () => volverAMenu());
+            const respuesta = data.choices?.[0]?.message?.content;
+            hablar(respuesta || "No obtuve una respuesta válida del modelo.", () => volverAMenu());
         })
         .catch(err => {
-            console.error('Error consultando Ollama:', err);
+            console.error('Error consultando Open WebUI:', err);
             hablar(
-                "No pude conectarme con el modelo local. Verifica que Ollama esté corriendo",
+                "No pude conectarme con el asistente de IA. Verifica que Open WebUI esté corriendo.",
                 () => volverAMenu()
             );
         });
 }
 
-// ================= CONFIGURACIÓN =================
 AVATAR = {
     neutral: './assets/saludo.gif',
     hablar: './assets/explicando.gif',
@@ -137,7 +75,6 @@ let datos = {
     habData: []
 };
 
-// ================= CARGA DE DATOS (JSON) =================
 function buscarEnBaseConocimiento(texto) {
     for (let item of BASE_CONOCIMIENTO) {
         const encontrado = item.tags.some(tag => texto.includes(tag));
@@ -149,8 +86,6 @@ function buscarEnBaseConocimiento(texto) {
 }
 
 window.onload = function () {
-
-    cargarEmbeddings(); // RAG: precarga la base vectorial en paralelo
 
     fetch('https://nuevo.sistemaimacop.com.mx/API/ApiDestinos', {
         method: 'POST',
@@ -199,7 +134,6 @@ window.onload = function () {
     });
 };
 
-// ================= UTILIDADES DE TEXTO =================
 function normalizar(texto) {
     return texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -217,7 +151,6 @@ function validarDestino(textoUsuario) {
     return null;
 }
 
-// ================= INTERFAZ =================
 function setAvatar(tipo) {
     const img = document.getElementById('avatar-img');
     const txt = document.getElementById('estado-texto');
